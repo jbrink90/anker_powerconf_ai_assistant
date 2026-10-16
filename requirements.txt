@@ -1,0 +1,9 @@
+ddgs>=9.14
+evdev
+httpx
+mcp>=1.8
+noisereduce>=3.0
+numpy
+python-dotenv
+sounddevice
+soundfile
