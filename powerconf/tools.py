@@ -19,6 +19,22 @@ TOOLS = [
 			},
 		},
 	},
+	{
+		"type": "function",
+		"function": {
+			"name": "clear_history",
+			"description": "Erase all conversation history and the persistent memory log. Use when the user asks to clear, wipe, or reset history/memory.",
+			"parameters": {"type": "object", "properties": {}},
+		},
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "forget_last",
+			"description": "Delete the most recent exchange from conversation history. Use when the user asks to forget, delete, or undo the last thing they said or the assistant's last reply.",
+			"parameters": {"type": "object", "properties": {}},
+		},
+	},
 ]
 
 
@@ -30,6 +46,12 @@ def web_search(query: str, max_results: int = 5) -> str:
 
 
 _mcp = None
+_history_ops: dict = {}
+
+
+def register_history_ops(clear, forget) -> None:
+	_history_ops["clear_history"] = clear
+	_history_ops["forget_last"] = forget
 
 
 def init_mcp(servers: list[dict]) -> None:
@@ -55,6 +77,8 @@ def all_tools() -> list[dict]:
 def run_tool(name: str, arguments: dict) -> str:
 	if name == "web_search":
 		return web_search(arguments.get("query", ""))
+	if name in _history_ops:
+		return _history_ops[name]()
 	if _mcp and name in _mcp.tool_names():
 		return _mcp.call(name, arguments)
 	return f"Unknown tool: {name}"

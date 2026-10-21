@@ -8,6 +8,11 @@ from dotenv import load_dotenv
 class Settings:
 	speaches_base_url: str
 	ollama_base_url: str
+	chat_provider: str
+	stt_provider: str
+	openai_base_url: str
+	openai_api_key: str
+	openai_model: str
 	stt_model: str
 	tts_model: str
 	tts_voice: str
@@ -40,6 +45,7 @@ class Settings:
 	barge_in_factor: float
 	followup_s: float
 	mcp_servers: str
+	startup_volume: str
 
 
 def load_settings() -> Settings:
@@ -47,6 +53,11 @@ def load_settings() -> Settings:
 	return Settings(
 		speaches_base_url=os.getenv("SPEACHES_BASE_URL", "http://localhost:8000").rstrip("/"),
 		ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
+		chat_provider=os.getenv("CHAT_PROVIDER", "ollama"),
+		stt_provider=os.getenv("STT_PROVIDER", "speaches"),
+		openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+		openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+		openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
 		stt_model=os.getenv("STT_MODEL", "whisper-1"),
 		tts_model=os.getenv("TTS_MODEL", "tts-1"),
 		tts_voice=os.getenv("TTS_VOICE", "af_heart"),
@@ -92,4 +103,5 @@ def load_settings() -> Settings:
 		barge_in_factor=float(os.getenv("BARGE_IN_FACTOR", "1.0")),
 		followup_s=float(os.getenv("FOLLOWUP_S", "10")),
 		mcp_servers=os.getenv("MCP_SERVERS", ""),
+		startup_volume=os.getenv("STARTUP_VOLUME", ""),
 	)

@@ -94,7 +94,50 @@ then update `KEY_ACTIONS` in `powerconf/buttons.py` if a button isn't mapped.
 
 - While the mic is open the device uses the HFP profile, so playback is call
   quality, not A2DP music quality — that's a Bluetooth limitation, not a bug.
-- Conversation history is kept in memory for the session.
+- Conversation history: the last few exchanges are sent verbatim; older turns
+  are compressed into one-line entries (user request, tools used, reply) in
+  `history.md`, which persists across restarts and is injected as context.
+  Delete `history.md` to start fresh.
+
+## Custom tools
+
+Tools are how the assistant acts on the world — the model picks one from the
+advertised schemas, the tool runs, and its result goes back to the model and
+gets spoken. Two extension paths:
+
+### Built-in tools (`powerconf/tools.py`)
+
+For anything that can run in-process. Three steps:
+
+1. Write a function that takes the model's arguments and returns a short string
+   — the result is spoken aloud, so keep it brief.
+2. Add its JSON schema to `TOOLS` (name, description, `parameters`). The
+   description is what the model reads to decide when to call it — say *when*,
+   not just what.
+3. Add a dispatch branch in `run_tool`.
+
+`web_search` is the template. For tools that need assistant internals
+(history, playback state, volume), the function can't live in `tools.py` —
+instead write a method on `Assistant`, register it from `Assistant.__init__`
+via a small callback registry like `register_history_ops`, and dispatch by
+name the same way. `clear_history` / `forget_last` show that pattern.
+
+Notes:
+
+- Tools run synchronously in the chat loop — a slow tool stalls the reply.
+  Wrap anything blocking >1 s in a timeout or defer it.
+- Every schema in `TOOLS` + discovered MCP tools is sent to the model on every
+  turn; each schema costs prompt tokens and latency, so keep them tight and
+  trim tools you don't use.
+- If a tool's result shouldn't be spoken verbatim, return a status string
+  ("Light turned off") rather than raw data — the model paraphrases it.
+
+### MCP servers (`.env`)
+
+For anything that already exists as an MCP server, or needs isolation in its
+own process — filesystem access, OAuth-backed services, Node/Python tools with
+their own deps. Configure once in `MCP_SERVERS`; tools are discovered and
+routed automatically at startup. Details below.
 
 ## MCP tool servers
 

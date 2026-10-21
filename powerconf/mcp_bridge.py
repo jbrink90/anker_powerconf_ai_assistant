@@ -18,9 +18,17 @@ class McpBridge:
 		self._sessions: dict[str, object] = {}
 		self._defs: list[dict] = []
 
-	def start(self, servers: list[dict], timeout: float = 30.0) -> None:
+	def start(self, servers: list[dict], timeout: float = 90.0) -> None:
 		future = asyncio.run_coroutine_threadsafe(self._connect_all(servers), self._loop)
-		future.result(timeout=timeout)
+		try:
+			future.result(timeout=timeout)
+		except TimeoutError:
+			# cold uvx/npx installs can outlast the timeout — keep the tools that
+			# connected in time; the rest still register in the background
+			logger.warning(
+				"MCP startup timed out — %d tool(s) connected so far, remaining servers will join late",
+				len(self._defs),
+			)
 
 	async def _connect_all(self, servers: list[dict]) -> None:
 		for config in servers:
