@@ -5,3 +5,5 @@ __pycache__/
 venv/
 recordings/
 history.md
+web/node_modules/
+web/dist/

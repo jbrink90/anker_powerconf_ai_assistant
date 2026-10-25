@@ -59,32 +59,40 @@ class _SentenceSplitter:
 
 
 class _SpeechPipeline:
-	"""Synthesizes reply sentences on a worker thread; playback drains .audio in order.
+	"""Synthesizes reply sentences on parallel worker threads; playback drains .audio in order.
 
-	Each queued item carries the generation at enqueue time so output from a round
-	that ended in tool calls can be dropped even if synthesis already finished.
+	Each queued item carries its sequence number and the generation at enqueue time
+	so output from a round that ended in tool calls can be dropped even if synthesis
+	already finished.
 	"""
 
-	def __init__(self, tts) -> None:
+	_WORKERS = 3  # concurrent TTS calls — sentence playback is faster than one HTTP round-trip
+
+	def __init__(self, tts, emit=None) -> None:
 		self._tts = tts
+		self._emit = emit or (lambda kind, text: None)
 		self._sentences: queue.Queue = queue.Queue()
 		self.audio: queue.Queue = queue.Queue()
 		self._generation = 0
+		self._next_seq = 0
 		self._lock = threading.Lock()
-		self._thread = threading.Thread(target=self._run, daemon=True)
+		self._threads = [threading.Thread(target=self._run, daemon=True) for _ in range(self._WORKERS)]
 
 	def start(self) -> None:
-		self._thread.start()
+		for thread in self._threads:
+			thread.start()
 
 	def say(self, text: str) -> None:
 		text = _strip_markdown(text)
 		if text:
 			with self._lock:
-				self._sentences.put((self._generation, text))
+				self._sentences.put((self._next_seq, self._generation, text))
+				self._next_seq += 1
 
 	def discard_pending(self) -> None:
 		with self._lock:
 			self._generation += 1
+			self._next_seq = 0  # sequence restarts per generation so playback can't stall
 		for pending in (self._sentences, self.audio):
 			while True:
 				try:
@@ -93,7 +101,8 @@ class _SpeechPipeline:
 					break
 
 	def finish(self) -> None:
-		self._sentences.put((self._generation, None))
+		for _ in self._threads:
+			self._sentences.put((-1, self._generation, None))
 
 	def abort(self) -> None:
 		self.discard_pending()
@@ -102,14 +111,16 @@ class _SpeechPipeline:
 	def _run(self) -> None:
 		try:
 			while True:
-				gen, sentence = self._sentences.get()
+				seq, gen, sentence = self._sentences.get()
 				if sentence is None:
 					return
+				logger.info("TTS segment %d: %r", seq, sentence)
+				self._emit("tool", f"tts: {sentence}")
 				try:
 					payload = self._tts.synthesize(sentence)
 				except Exception as exc:
 					payload = exc
-				self.audio.put((gen, payload))
+				self.audio.put((seq, gen, payload))
 		finally:
 			self.audio.put(None)
 
@@ -169,6 +180,12 @@ class Assistant:
 		self._speaking = threading.Event()
 		self._interrupted = False
 		self._followup_until = 0.0
+		self.ui = None
+		if settings.web_ui:
+			from powerconf.webui import WebUI
+
+			self.ui = WebUI(Path("web/dist"), settings.web_ui_port, on_action=self.actions.put)
+			self.ui.start()
 
 	def run(self) -> None:
 		from powerconf.audio import find_device, find_source_name
@@ -217,6 +234,7 @@ class Assistant:
 
 		mic.start()
 		logger.info("Listening")
+		self._emit("status", "listening")
 		self._calibrate(mic, vad)
 
 		awake_until = 0.0
@@ -233,6 +251,7 @@ class Assistant:
 					score = detector.feed(chunk)
 					if score >= self.settings.wakeword_threshold:
 						logger.info("Wake word detected (score %.2f) — listening", score)
+						self._emit("status", "wake word — listening")
 						awake_until = time.monotonic() + 6.0
 				utterance = vad.feed(chunk)
 				if utterance is not None:
@@ -248,10 +267,16 @@ class Assistant:
 			mic.stop()
 			listener.stop()
 
+	def _emit(self, kind: str, text: str) -> None:
+		if self.ui is not None:
+			self.ui.emit(kind, text)
+
 	def _wait_for_speaker(self) -> None:
 		while True:
 			has_sink, has_source = bluetooth_audio_ready()
-			has_buttons = find_button_device(self.settings.button_device_name)
+			has_buttons = find_button_device(
+				self.settings.button_device_name, self.settings.button_fallback
+			)
 			if has_buttons is not None:
 				has_buttons.close()
 			missing = []
@@ -268,7 +293,7 @@ class Assistant:
 			time.sleep(3.0)
 
 	def _start_buttons(self) -> ButtonListener:
-		device = find_button_device(self.settings.button_device_name)
+		device = find_button_device(self.settings.button_device_name, self.settings.button_fallback)
 		if device is not None:
 			device.close()
 		else:
@@ -276,7 +301,9 @@ class Assistant:
 				"No button input device found matching %r yet; will keep rescanning",
 				self.settings.button_device_name,
 			)
-		listener = ButtonListener(self.settings.button_device_name, self.actions)
+		listener = ButtonListener(
+			self.settings.button_device_name, self.actions, self.settings.button_fallback
+		)
 		listener.start()
 		return listener
 
@@ -354,7 +381,8 @@ class Assistant:
 			logger.info("Empty transcript — check the mic isn't muted on the device")
 			return
 		logger.info("You: %s", text)
-		pipeline = _SpeechPipeline(self.tts)
+		self._emit("you", text)
+		pipeline = _SpeechPipeline(self.tts, self._emit)
 		pipeline.start()
 		if self.settings.echo_mode:
 			reply = text
@@ -366,10 +394,12 @@ class Assistant:
 			except Exception:
 				pipeline.abort()
 				logger.exception("Chat failed")
+				self._emit("error", "chat failed — see terminal log")
 				return
 		pipeline.finish()
 		reply = _unwrap_json_reply(reply)
 		logger.info("Assistant: %s", reply)
+		self._emit("assistant", reply)
 		self._log_turn(text, reply)
 		if not reply.strip():
 			logger.warning("Empty reply from model — nothing to speak")
@@ -389,27 +419,36 @@ class Assistant:
 		self._followup_until = 0.0
 		self._interrupted = False
 		self._speaking.set()
+		self._emit("status", "speaking")
 		watcher = threading.Thread(target=self._watch_barge_in, args=(self._mic,), daemon=True)
 		if self.settings.barge_in:
 			watcher.start()
 		index = 0
+		expected = 0
+		pending: dict[int, object] = {}
+		workers_done = 0
 		try:
-			while True:
+			while workers_done < len(pipeline._threads):
 				item = pipeline.audio.get()
 				if item is None:
-					break
-				gen, payload = item
-				if gen != pipeline._generation or self._interrupted:
+					workers_done += 1
 					continue
-				if isinstance(payload, Exception):
-					raise payload
-				if not payload.startswith(b"RIFF"):
-					logger.error("TTS returned non-WAV data (%d bytes) — skipping segment", len(payload))
+				seq, gen, payload = item
+				if gen != pipeline._generation:
 					continue
-				if save_prefix:
-					index += 1
-					self._save(f"{save_prefix}_{index}.wav", payload)
-				play_wav(payload, device=self._out_device, should_stop=self._playback_interrupted)
+				pending[seq] = payload
+				while expected in pending and not self._interrupted:
+					segment = pending.pop(expected)
+					expected += 1
+					if isinstance(segment, Exception):
+						raise segment
+					if not segment.startswith(b"RIFF"):
+						logger.error("TTS returned non-WAV data (%d bytes) — skipping segment", len(segment))
+						continue
+					if save_prefix:
+						index += 1
+						self._save(f"{save_prefix}_{index}.wav", segment)
+					play_wav(segment, device=self._out_device, should_stop=self._playback_interrupted)
 		finally:
 			self._speaking.clear()
 			if watcher.is_alive():
@@ -420,6 +459,7 @@ class Assistant:
 				self._vad.reset()
 				# stay awake briefly for follow-ups — no wake word needed
 				self._followup_until = time.monotonic() + self.settings.followup_s
+			self._emit("status", "listening")
 			self._suppress_wake_echo()
 
 	def _watch_barge_in(self, mic: MicStream) -> None:
@@ -442,6 +482,7 @@ class Assistant:
 					silence_run = 0
 					if speech_run >= speech_frames:
 						logger.info("Barge-in: speech detected during playback (rms %.0f > %.0f) — interrupting", rms, threshold)
+						self._emit("interrupt", "voice barge-in — interrupted")
 						self._followup_until = time.monotonic() + 8.0
 						self.actions.put("interrupt")
 						return
@@ -541,14 +582,18 @@ class Assistant:
 		tools = all_tools()
 		for _ in range(4):
 			request = self._request_messages()
-			splitter = _SentenceSplitter(speech.say)
-			chat_stream = getattr(self.ollama, "chat_stream", None)
+			splitter = _SentenceSplitter(speech.say) if self.settings.streaming else None
+			chat_stream = getattr(self.ollama, "chat_stream", None) if splitter else None
 			if chat_stream is not None:
 				message = chat_stream(request, tools, splitter.feed)
+				splitter.flush()
 			else:
 				message = self.ollama.chat(request, tools)
-				splitter.feed(message.get("content") or "")
-			splitter.flush()
+				if splitter is not None:
+					splitter.feed(message.get("content") or "")
+					splitter.flush()
+				else:
+					speech.say(message.get("content") or "")
 			self.messages.append(message)
 			tool_calls = message.get("tool_calls") or []
 			if not tool_calls:
@@ -566,6 +611,8 @@ class Assistant:
 					except json.JSONDecodeError:
 						arguments = {}
 				logger.info("Tool call: %s(%s)", function["name"], arguments)
+				args = ", ".join(f"{k}={v!r}" for k, v in arguments.items())
+				self._emit("tool", f"{function['name']}({args})")
 				try:
 					result = run_tool(function["name"], arguments)
 				except Exception:
@@ -603,6 +650,7 @@ class Assistant:
 		if interrupted:
 			self._interrupted = True
 			logger.info("Playback interrupted")
+			self._emit("status", "interrupted")
 		return interrupted
 
 	def _cancel_pending(self, *actions: str) -> bool:

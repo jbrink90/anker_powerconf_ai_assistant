@@ -31,6 +31,7 @@ class Settings:
 	audio_output_device: str
 	sample_rate: int
 	button_device_name: str
+	button_fallback: bool
 	volume_command: str
 	mute_command: str
 	vad_speech_ms: int
@@ -46,6 +47,9 @@ class Settings:
 	followup_s: float
 	mcp_servers: str
 	startup_volume: str
+	web_ui: bool
+	web_ui_port: int
+	streaming: bool
 
 
 def load_settings() -> Settings:
@@ -89,6 +93,7 @@ def load_settings() -> Settings:
 		audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE", ""),
 		sample_rate=int(os.getenv("SAMPLE_RATE", "16000")),
 		button_device_name=os.getenv("BUTTON_DEVICE_NAME", "AVRCP"),
+		button_fallback=os.getenv("BUTTON_FALLBACK", "1") in ("1", "true", "yes"),
 		volume_command=os.getenv("VOLUME_COMMAND", "pactl set-sink-volume @DEFAULT_SINK@ {op}"),
 		mute_command=os.getenv("MUTE_COMMAND", "pactl set-sink-mute @DEFAULT_SINK@ toggle"),
 		vad_speech_ms=int(os.getenv("VAD_SPEECH_MS", "250")),
@@ -104,4 +109,7 @@ def load_settings() -> Settings:
 		followup_s=float(os.getenv("FOLLOWUP_S", "10")),
 		mcp_servers=os.getenv("MCP_SERVERS", ""),
 		startup_volume=os.getenv("STARTUP_VOLUME", ""),
+		web_ui=os.getenv("WEB_UI", "0") in ("1", "true", "yes"),
+		web_ui_port=int(os.getenv("WEB_UI_PORT", "8765")),
+		streaming=os.getenv("STREAMING", "1") in ("1", "true", "yes"),
 	)
