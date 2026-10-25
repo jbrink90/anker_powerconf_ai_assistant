@@ -24,8 +24,8 @@ KEY_ACTIONS = {
 }
 
 
-def find_button_device(name_substring: str) -> InputDevice | None:
-	"""Returns (device, is_name_match). Prefers name match, falls back to a device with AVRCP-like keys."""
+def find_button_device(name_substring: str, allow_fallback: bool = True) -> InputDevice | None:
+	"""Prefers a name match; optionally falls back to any device with AVRCP-like keys."""
 	candidates = []
 	for path in evdev.list_devices():
 		try:
@@ -34,14 +34,13 @@ def find_button_device(name_substring: str) -> InputDevice | None:
 			continue
 		key_caps = device.capabilities().get(ecodes.EV_KEY, [])
 		if name_substring and name_substring.lower() in device.name.lower():
-			logger.info("Button device: %s (%s)", device.name, path)
 			return device
-		if any(key in key_caps for key in (ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAYCD, ecodes.KEY_VOICECOMMAND)):
+		if allow_fallback and any(
+			key in key_caps for key in (ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAYCD, ecodes.KEY_VOICECOMMAND)
+		):
 			candidates.append(device)
 	if candidates:
-		device = candidates[0]
-		logger.info("Button device (fallback): %s (%s)", device.name, device.path)
-		return device
+		return candidates[0]
 	return None
 
 
@@ -50,9 +49,10 @@ def is_name_match(device: InputDevice, name_substring: str) -> bool:
 
 
 class ButtonListener:
-	def __init__(self, name_substring: str, actions: queue.Queue[str]) -> None:
+	def __init__(self, name_substring: str, actions: queue.Queue[str], allow_fallback: bool = True) -> None:
 		self._name_substring = name_substring
 		self._actions = actions
+		self._allow_fallback = allow_fallback
 		self._stop = threading.Event()
 		self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -65,11 +65,17 @@ class ButtonListener:
 
 	def _run(self) -> None:
 		while not self._stop.is_set():
-			device = find_button_device(self._name_substring)
+			device = find_button_device(self._name_substring, self._allow_fallback)
 			if device is None:
 				if self._stop.wait(3.0):
 					return
 				continue
+			logger.info(
+				"Button device%s: %s (%s)",
+				"" if is_name_match(device, self._name_substring) else " (fallback)",
+				device.name,
+				device.path,
+			)
 			try:
 				self._read_events(device)
 			except OSError:
@@ -88,7 +94,7 @@ class ButtonListener:
 					# parked on a fallback device? keep looking for the named one
 					if is_name_match(device, self._name_substring):
 						continue
-					replacement = find_button_device(self._name_substring)
+					replacement = find_button_device(self._name_substring, self._allow_fallback)
 					if replacement is not None and is_name_match(replacement, self._name_substring):
 						replacement.close()
 						return
