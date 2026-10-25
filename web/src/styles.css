@@ -1,0 +1,153 @@
+* {
+	box-sizing: border-box;
+	margin: 0;
+}
+
+body {
+	background: #0d1117;
+	color: #e6edf3;
+	font-family: "Segoe UI", system-ui, sans-serif;
+}
+
+.app {
+	display: flex;
+	flex-direction: column;
+	height: 100vh;
+	width: 70%;
+	margin: 0 auto;
+	padding: 0 16px;
+}
+
+header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 0;
+	border-bottom: 1px solid #30363d;
+}
+
+h1 {
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+.pills {
+	display: flex;
+	gap: 8px;
+}
+
+.pill {
+	font-size: 0.75rem;
+	padding: 3px 10px;
+	border-radius: 999px;
+	background: #21262d;
+	border: 1px solid #30363d;
+}
+
+.pill.conn.on {
+	color: #3fb950;
+	border-color: #3fb950;
+}
+
+.pill.conn.off {
+	color: #f85149;
+	border-color: #f85149;
+}
+
+.pill.status {
+	color: #58a6ff;
+	border-color: #1f6feb;
+}
+
+.pill.btn {
+	cursor: pointer;
+	font: inherit;
+	font-size: 0.75rem;
+	color: #f0883e;
+	border-color: #f0883e;
+	background: #21262d;
+}
+
+.pill.btn:hover {
+	background: #f0883e;
+	color: #0d1117;
+}
+
+.feed {
+	flex: 1;
+	overflow-y: auto;
+	padding: 16px 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	scrollbar-width: thin;
+	scrollbar-color: #21262d #0d1117;
+}
+
+.feed::-webkit-scrollbar {
+	width: 8px;
+}
+
+.feed::-webkit-scrollbar-track {
+	background: #0d1117;
+}
+
+.feed::-webkit-scrollbar-thumb {
+	background: #21262d;
+	border-radius: 4px;
+}
+
+.feed::-webkit-scrollbar-thumb:hover {
+	background: #30363d;
+}
+
+.row {
+	display: flex;
+	gap: 10px;
+	align-items: baseline;
+}
+
+.ts {
+	font-family: ui-monospace, monospace;
+	font-size: 0.7rem;
+	color: #484f58;
+	flex-shrink: 0;
+}
+
+.text {
+	line-height: 1.4;
+}
+
+.row.you .text {
+	color: #79c0ff;
+	font-weight: 600;
+}
+
+.row.assistant .text {
+	color: #e6edf3;
+	background: #161b22;
+	border: 1px solid #30363d;
+	border-radius: 10px;
+	padding: 8px 12px;
+}
+
+.row.tool .text {
+	font-family: ui-monospace, monospace;
+	font-size: 0.8rem;
+	color: #d2a8ff;
+}
+
+.row.status .text {
+	font-size: 0.75rem;
+	color: #484f58;
+	font-style: italic;
+}
+
+.row.error .text {
+	color: #f85149;
+}
+
+.row.interrupt .text {
+	color: #f0883e;
+	font-style: italic;
+}
