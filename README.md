@@ -99,6 +99,25 @@ then update `KEY_ACTIONS` in `powerconf/buttons.py` if a button isn't mapped.
   `history.md`, which persists across restarts and is injected as context.
   Delete `history.md` to start fresh.
 
+## Web UI
+
+A lightweight React app shows the live feed — transcripts, replies, tool
+calls, status, errors — in a browser instead of the terminal.
+
+Build it on a dev machine with Node installed, then copy the output to the Pi:
+
+```sh
+cd web
+npm install
+npm run build          # outputs web/dist/
+scp -r dist jordan@<pi>:~/.../anker_powerconf_speaker/web/
+```
+
+Set `WEB_UI=1` and `WEB_UI_PORT=8765` in `.env`, start the assistant, then open
+`http://<pi>:8765`. The page subscribes to `/events` (server-sent events);
+clients that connect late get the last 100 events replayed. `npm run dev`
+proxies `/events` to the Pi so you can iterate on the UI without redeploying.
+
 ## Custom tools
 
 Tools are how the assistant acts on the world — the model picks one from the
