@@ -253,6 +253,8 @@ class Assistant:
 						logger.info("Wake word detected (score %.2f) — listening", score)
 						self._emit("status", "wake word — listening")
 						awake_until = time.monotonic() + 6.0
+						self._wake_cooldown = time.monotonic() + self.settings.wakeword_cooldown_s
+						detector.reset()
 				utterance = vad.feed(chunk)
 				if utterance is not None:
 					if detector is None or now <= max(awake_until, self._followup_until):
@@ -500,7 +502,7 @@ class Assistant:
 		if self._detector is not None:
 			self._detector.reset()
 			# don't feed the detector for a moment — residual reverb of our own playback
-			self._wake_cooldown = time.monotonic() + 1.5
+			self._wake_cooldown = time.monotonic() + self.settings.wakeword_cooldown_s
 
 	def _load_log(self) -> list[str]:
 		try:

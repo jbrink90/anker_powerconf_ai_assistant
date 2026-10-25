@@ -41,6 +41,7 @@ class Settings:
 	vad_min_rms: float
 	wakeword_model: str
 	wakeword_threshold: float
+	wakeword_cooldown_s: float
 	barge_in: bool
 	barge_in_min_rms: float
 	barge_in_factor: float
@@ -103,6 +104,7 @@ def load_settings() -> Settings:
 		vad_min_rms=float(os.getenv("VAD_MIN_RMS", "300")),
 		wakeword_model=os.getenv("WAKEWORD_MODEL", ""),
 		wakeword_threshold=float(os.getenv("WAKEWORD_THRESHOLD", "0.5")),
+		wakeword_cooldown_s=float(os.getenv("WAKEWORD_COOLDOWN_S", "4")),
 		barge_in=os.getenv("BARGE_IN", "1") in ("1", "true", "yes"),
 		barge_in_min_rms=float(os.getenv("BARGE_IN_MIN_RMS", "300")),
 		barge_in_factor=float(os.getenv("BARGE_IN_FACTOR", "1.0")),
