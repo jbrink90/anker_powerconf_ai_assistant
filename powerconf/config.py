@@ -40,12 +40,14 @@ class Settings:
 	vad_threshold_factor: float
 	vad_min_rms: float
 	wakeword_model: str
+	wakeword_phrase: str
 	wakeword_threshold: float
 	wakeword_cooldown_s: float
 	barge_in: bool
 	barge_in_min_rms: float
 	barge_in_factor: float
 	followup_s: float
+	wake_ack_tone: bool
 	mcp_servers: str
 	startup_volume: str
 	web_ui: bool
@@ -78,23 +80,24 @@ def load_settings() -> Settings:
 		double_tap_wav=os.getenv("DOUBLE_TAP_WAV", "not_found.wav"),
 		system_prompt=os.getenv(
 			"SYSTEM_PROMPT",
-			"You are Jarvis, a voice assistant. Reply in one or two short spoken sentences — "
-			"plain text only, no lists or markdown. You have tools: web_search for current news "
-			"and facts you're unsure of; fetch to read a URL the user gives you; wikipedia for "
-			"general knowledge and \"who/what is\" questions; weather for weather or forecasts; "
-			"time for the time or date; memory to remember things the user asks you to remember "
-			"and to recall them later; shell for basic Pi info — use commands like "
-			"[\"vcgencmd\",\"measure_temp\"] for temperature, [\"uptime\"], [\"df\",\"-h\"], or [\"free\",\"-h\"]; "
-			"space; and filesystem for files under /home/jordan. Rules: never search or call "
-			"tools for opinions, jokes, or small talk — answer directly. When a tool returns "
-			"information, summarize it in your own words; never say you can't access something "
-			"or tell the user to check a website. If a tool fails, say so briefly and move on.",
+			"You are CJ, a warm, attentive voice assistant and conversational companion. "
+			"Be relaxed, grounded, loyal, streetwise, and lightly funny, with a casual, confident "
+			"edge. Keep it natural: don't force slang, act tough, or use catchphrases. Respond to "
+			"the person, not just the literal task: acknowledge feelings or context when relevant, "
+			"ask one thoughtful follow-up when it helps, and remember details from the conversation. "
+			"Keep spoken replies concise by default, usually one or two sentences, but allow room "
+			"for real conversation or more detail when useful. Use plain text without lists or "
+			"markdown. Use only tools actually available in this conversation: web_search for "
+			"current information, and any additional tools explicitly provided by connected MCP "
+			"servers. Use tools when useful, but answer naturally without tools for opinions, jokes, "
+			"or small talk. When a tool returns information, summarize it in your own words. If a "
+			"tool fails, say so briefly and move on.",
 		),
 		audio_input_device=os.getenv("AUDIO_INPUT_DEVICE", ""),
 		audio_output_device=os.getenv("AUDIO_OUTPUT_DEVICE", ""),
 		sample_rate=int(os.getenv("SAMPLE_RATE", "16000")),
 		button_device_name=os.getenv("BUTTON_DEVICE_NAME", "AVRCP"),
-		button_fallback=os.getenv("BUTTON_FALLBACK", "1") in ("1", "true", "yes"),
+		button_fallback=os.getenv("BUTTON_FALLBACK", "0") in ("1", "true", "yes"),
 		volume_command=os.getenv("VOLUME_COMMAND", "pactl set-sink-volume @DEFAULT_SINK@ {op}"),
 		mute_command=os.getenv("MUTE_COMMAND", "pactl set-sink-mute @DEFAULT_SINK@ toggle"),
 		vad_speech_ms=int(os.getenv("VAD_SPEECH_MS", "250")),
@@ -103,12 +106,14 @@ def load_settings() -> Settings:
 		vad_threshold_factor=float(os.getenv("VAD_THRESHOLD_FACTOR", "3.0")),
 		vad_min_rms=float(os.getenv("VAD_MIN_RMS", "300")),
 		wakeword_model=os.getenv("WAKEWORD_MODEL", ""),
-		wakeword_threshold=float(os.getenv("WAKEWORD_THRESHOLD", "0.5")),
+		wakeword_phrase=os.getenv("WAKEWORD_PHRASE", ""),
+		wakeword_threshold=float(os.getenv("WAKEWORD_THRESHOLD", "0.55")),
 		wakeword_cooldown_s=float(os.getenv("WAKEWORD_COOLDOWN_S", "4")),
 		barge_in=os.getenv("BARGE_IN", "1") in ("1", "true", "yes"),
 		barge_in_min_rms=float(os.getenv("BARGE_IN_MIN_RMS", "300")),
 		barge_in_factor=float(os.getenv("BARGE_IN_FACTOR", "1.0")),
 		followup_s=float(os.getenv("FOLLOWUP_S", "10")),
+		wake_ack_tone=os.getenv("WAKE_ACK_TONE", "1") in ("1", "true", "yes"),
 		mcp_servers=os.getenv("MCP_SERVERS", ""),
 		startup_volume=os.getenv("STARTUP_VOLUME", ""),
 		web_ui=os.getenv("WEB_UI", "0") in ("1", "true", "yes"),

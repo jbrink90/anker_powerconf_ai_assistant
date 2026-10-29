@@ -27,20 +27,27 @@ KEY_ACTIONS = {
 def find_button_device(name_substring: str, allow_fallback: bool = True) -> InputDevice | None:
 	"""Prefers a name match; optionally falls back to any device with AVRCP-like keys."""
 	candidates = []
+	known_keys = set(KEY_ACTIONS)
 	for path in evdev.list_devices():
 		try:
 			device = InputDevice(path)
 		except OSError:
 			continue
 		key_caps = device.capabilities().get(ecodes.EV_KEY, [])
-		if name_substring and name_substring.lower() in device.name.lower():
+		has_action_key = any(key in key_caps for key in known_keys)
+		if name_substring and name_substring.lower() in device.name.lower() and has_action_key:
+			for candidate in candidates:
+				candidate.close()
 			return device
-		if allow_fallback and any(
-			key in key_caps for key in (ecodes.KEY_PLAYPAUSE, ecodes.KEY_PLAYCD, ecodes.KEY_VOICECOMMAND)
-		):
+		if allow_fallback and has_action_key:
 			candidates.append(device)
+		else:
+			device.close()
 	if candidates:
-		return candidates[0]
+		selected = candidates.pop(0)
+		for candidate in candidates:
+			candidate.close()
+		return selected
 	return None
 
 

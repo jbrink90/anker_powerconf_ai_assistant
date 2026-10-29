@@ -14,14 +14,28 @@ BLOCK_MS = 30
 
 
 def find_device(name_substring: str, kind: str) -> int | None:
-	if not name_substring:
+	try:
+		devices = list(enumerate(sd.query_devices()))
+	except Exception as exc:
+		logger.warning("Could not enumerate audio devices: %s", exc)
 		return None
-	for index, info in enumerate(sd.query_devices()):
+	for index, info in devices:
 		channels = info["max_input_channels"] if kind == "input" else info["max_output_channels"]
-		if channels > 0 and name_substring.lower() in info["name"].lower():
-			logger.info("Using %s device %s", kind, info["name"])
+		if name_substring and channels > 0 and name_substring.lower() in info["name"].lower():
+			logger.debug("Using %s device %s", kind, info["name"])
 			return index
-	logger.warning("No %s device matching %r, using default", kind, name_substring)
+	if kind == "output" and not name_substring:
+		preferred = ("powerconf", "anker", "bluez", "bluetooth")
+		for index, info in devices:
+			if info["max_output_channels"] > 0 and any(token in info["name"].lower() for token in preferred):
+				logger.debug("Auto-selected likely Bluetooth output %s", info["name"])
+				return index
+		try:
+			logger.debug("Using default output device %s", sd.query_devices(kind="output")["name"])
+		except Exception:
+			logger.warning("No default output device is available")
+	elif name_substring:
+		logger.debug("No %s device matching %r", kind, name_substring)
 	return None
 
 
@@ -162,3 +176,51 @@ def play_wav(data: bytes, device: int | None = None, should_stop=None) -> None:
 			raise ValueError(f"Unsupported sample width: {wav.getsampwidth()}")
 	samples = np.frombuffer(frames, dtype=np.int16).reshape(-1, channels)
 	play_samples(samples, samplerate, device, should_stop)
+
+
+def play_wake_ack(device: int | None = None) -> None:
+	"""Play a short, soft rising two-note cue when the wake word is recognized."""
+	try:
+		output_info = sd.query_devices(device, "output") if device is not None else sd.query_devices(kind="output")
+		samplerate = int(output_info["default_samplerate"])
+	except Exception:
+		samplerate = 48000
+	duration = 0.12
+	t = np.arange(int(samplerate * duration), dtype=np.float32) / samplerate
+	frequencies = np.where(t < duration / 2, 660.0, 880.0)
+	envelope = np.minimum(1.0, np.minimum(t / 0.008, (duration - t) / 0.015))
+	samples_float = np.sin(2 * np.pi * frequencies * t) * envelope * 0.12
+	samples = np.clip(samples_float * 32767, -32768, 32767).astype(np.int16)
+	play_samples(samples, samplerate, device=device)
+
+
+def dump_audio_devices() -> None:
+	"""Print PipeWire/PulseAudio routes and PortAudio devices for troubleshooting."""
+	for label, args in (
+		("default sink", ["pactl", "get-default-sink"]),
+		("default source", ["pactl", "get-default-source"]),
+		("sinks", ["pactl", "list", "sinks", "short"]),
+		("sources", ["pactl", "list", "sources", "short"]),
+	):
+		try:
+			output = subprocess.check_output(args, text=True, stderr=subprocess.STDOUT).strip()
+		except (OSError, subprocess.CalledProcessError) as exc:
+			output = str(exc)
+		print(f"\n{label}:\n{output or '(none)'}")
+	print("\nPortAudio devices:")
+	try:
+		default_input, default_output = sd.default.device
+		for index, info in enumerate(sd.query_devices()):
+			if info["max_input_channels"] or info["max_output_channels"]:
+				flags = []
+				if index == default_input:
+					flags.append("default input")
+				if index == default_output:
+					flags.append("default output")
+				print(
+					f"  {index}: {info['name']} "
+					f"(in={info['max_input_channels']}, out={info['max_output_channels']})"
+					+ (f" [{' / '.join(flags)}]" if flags else "")
+				)
+	except Exception as exc:
+		print(f"  Could not enumerate PortAudio devices: {exc}")

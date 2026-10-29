@@ -2,6 +2,8 @@ import asyncio
 import logging
 import threading
 from contextlib import AsyncExitStack
+from datetime import date
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ class McpBridge:
 		self._stack = AsyncExitStack()
 		self._sessions: dict[str, object] = {}
 		self._defs: list[dict] = []
+		self._errlogs = []
 
 	def start(self, servers: list[dict], timeout: float = 90.0) -> None:
 		future = asyncio.run_coroutine_threadsafe(self._connect_all(servers), self._loop)
@@ -46,7 +49,15 @@ class McpBridge:
 			args=config.get("args", []),
 			env=config.get("env"),
 		)
-		read, write = await self._stack.enter_async_context(stdio_client(params))
+		log_dir = Path(__file__).resolve().parents[1] / "logs"
+		log_dir.mkdir(parents=True, exist_ok=True)
+		errlog = (log_dir / f"{date.today().isoformat()}.log").open("a", encoding="utf-8", buffering=1)
+		try:
+			read, write = await self._stack.enter_async_context(stdio_client(params, errlog=errlog))
+		except Exception:
+			errlog.close()
+			raise
+		self._errlogs.append(errlog)
 		session = await self._stack.enter_async_context(ClientSession(read, write))
 		await session.initialize()
 		tools = await session.list_tools()
@@ -81,4 +92,7 @@ class McpBridge:
 
 	def close(self) -> None:
 		asyncio.run_coroutine_threadsafe(self._stack.aclose(), self._loop).result(timeout=10)
+		for errlog in self._errlogs:
+			errlog.close()
+		self._errlogs.clear()
 		self._loop.call_soon_threadsafe(self._loop.stop)

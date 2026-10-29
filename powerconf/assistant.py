@@ -5,6 +5,7 @@ import shlex
 import subprocess
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -15,6 +16,7 @@ from powerconf.audio import (
 	load_audio,
 	play_samples,
 	play_wav,
+	play_wake_ack,
 	reduce_noise,
 	wav_bytes,
 )
@@ -68,9 +70,8 @@ class _SpeechPipeline:
 
 	_WORKERS = 3  # concurrent TTS calls — sentence playback is faster than one HTTP round-trip
 
-	def __init__(self, tts, emit=None) -> None:
+	def __init__(self, tts) -> None:
 		self._tts = tts
-		self._emit = emit or (lambda kind, text: None)
 		self._sentences: queue.Queue = queue.Queue()
 		self.audio: queue.Queue = queue.Queue()
 		self._generation = 0
@@ -114,8 +115,6 @@ class _SpeechPipeline:
 				seq, gen, sentence = self._sentences.get()
 				if sentence is None:
 					return
-				logger.info("TTS segment %d: %r", seq, sentence)
-				self._emit("tool", f"tts: {sentence}")
 				try:
 					payload = self._tts.synthesize(sentence)
 				except Exception as exc:
@@ -128,6 +127,7 @@ class _SpeechPipeline:
 class Assistant:
 	def __init__(self, settings: Settings) -> None:
 		self.settings = settings
+		self._settings_lock = threading.RLock()
 		self.speaches = SpeachesClient(
 			settings.speaches_base_url,
 			settings.stt_model,
@@ -184,22 +184,27 @@ class Assistant:
 		if settings.web_ui:
 			from powerconf.webui import WebUI
 
-			self.ui = WebUI(Path("web/dist"), settings.web_ui_port, on_action=self.actions.put)
+			self.ui = WebUI(
+				Path("web/dist"),
+				settings.web_ui_port,
+				on_action=self.actions.put,
+				settings_provider=self._public_settings,
+				on_settings_update=self._update_settings,
+			)
 			self.ui.start()
 
 	def run(self) -> None:
-		from powerconf.audio import find_device, find_source_name
+		from powerconf.audio import find_source_name
 
-		self._wait_for_speaker()
-		if self.settings.startup_volume:
-			self._run_command(self.settings.volume_command.format(op=self.settings.startup_volume))
-		source_name = find_source_name(self.settings.audio_input_device)
-		if source_name:
-			logger.info("Mic source: %s", source_name)
-		mic = MicStream(source_name, self.settings.sample_rate)
-		self._mic = mic
-		self._out_device = find_device(self.settings.audio_output_device, "output")
-		listener = self._start_buttons()
+		if self.settings.mcp_servers:
+			import json as _json
+
+			from powerconf.tools import init_mcp
+
+			try:
+				init_mcp(_json.loads(self.settings.mcp_servers))
+			except _json.JSONDecodeError:
+				logger.warning("MCP_SERVERS is not valid JSON — skipping MCP setup")
 
 		vad = EnergyVad(
 			self.settings.sample_rate,
@@ -222,15 +227,16 @@ class Assistant:
 				self.settings.wakeword_threshold,
 			)
 
-		if self.settings.mcp_servers:
-			import json as _json
-
-			from powerconf.tools import init_mcp
-
-			try:
-				init_mcp(_json.loads(self.settings.mcp_servers))
-			except _json.JSONDecodeError:
-				logger.warning("MCP_SERVERS is not valid JSON — skipping MCP setup")
+		# Finish startup work that does not need audio before waiting on Bluetooth.
+		self._wait_for_speaker()
+		if self.settings.startup_volume:
+			self._run_command(self.settings.volume_command.format(op=self.settings.startup_volume))
+		source_name = find_source_name(self.settings.audio_input_device)
+		if source_name:
+			logger.info("Mic source: %s", source_name)
+		mic = MicStream(source_name, self.settings.sample_rate)
+		self._mic = mic
+		listener = self._start_buttons()
 
 		mic.start()
 		logger.info("Listening")
@@ -240,6 +246,7 @@ class Assistant:
 		awake_until = 0.0
 		self._detector = detector
 		self._wake_cooldown = 0.0
+		self._wakeword_pending = False
 		try:
 			while True:
 				self._handle_actions(mic)
@@ -252,15 +259,25 @@ class Assistant:
 					if score >= self.settings.wakeword_threshold:
 						logger.info("Wake word detected (score %.2f) — listening", score)
 						self._emit("status", "wake word — listening")
+						if self.settings.wake_ack_tone:
+							try:
+								play_wake_ack(device=self._resolve_output_device())
+							except Exception:
+								logger.warning("Wake acknowledgment tone playback failed", exc_info=True)
 						awake_until = time.monotonic() + 6.0
 						self._wake_cooldown = time.monotonic() + self.settings.wakeword_cooldown_s
+						self._wakeword_pending = True
 						detector.reset()
 				utterance = vad.feed(chunk)
 				if utterance is not None:
-					if detector is None or now <= max(awake_until, self._followup_until):
-						self._process(utterance)
+					accepted = detector is None or now <= max(awake_until, self._followup_until)
+					wakeword_activated = self._wakeword_pending
+					self._wakeword_pending = False
 					awake_until = 0.0
 					self._followup_until = 0.0
+					if accepted and self._process(utterance, wakeword_activated):
+						# A standalone wake phrase should leave time for the actual request.
+						self._followup_until = time.monotonic() + 6.0
 				elif vad.in_speech and now <= max(awake_until, self._followup_until):
 					# keep the window open while a command is still being spoken
 					awake_until = now + 2.0
@@ -273,7 +290,35 @@ class Assistant:
 		if self.ui is not None:
 			self.ui.emit(kind, text)
 
+	def _public_settings(self) -> dict:
+		from powerconf.settings_store import public_values
+
+		with self._settings_lock:
+			return public_values(self.settings)
+
+	def _update_settings(self, payload: object) -> dict:
+		from powerconf.settings_store import save_updates, validate_updates
+
+		updates = validate_updates(payload)
+		with self._settings_lock:
+			updated = replace(self.settings, **updates)
+			save_updates(updates)
+			self.settings = updated
+			self.messages[0]["content"] = updated.system_prompt
+			vad = getattr(self, "_vad", None)
+			if vad is not None:
+				vad.configure(
+					speech_ms=updated.vad_speech_ms,
+					silence_ms=updated.vad_silence_ms,
+					max_utterance_s=updated.vad_max_utterance_s,
+					threshold_factor=updated.vad_threshold_factor,
+					min_rms=updated.vad_min_rms,
+				)
+		logger.info("Applied %d runtime setting(s)", len(updates))
+		return self._public_settings()
+
 	def _wait_for_speaker(self) -> None:
+		last_missing: tuple[str, ...] | None = None
 		while True:
 			has_sink, has_source = bluetooth_audio_ready()
 			has_buttons = find_button_device(
@@ -291,7 +336,12 @@ class Assistant:
 			if not missing:
 				logger.info("PowerConf connected: sink, source, and buttons present")
 				return
-			logger.warning("Waiting for PowerConf — missing: %s", ", ".join(missing))
+			current_missing = tuple(missing)
+			if current_missing != last_missing:
+				missing_text = ", ".join(missing)
+				logger.warning("Waiting for PowerConf — missing: %s", missing_text)
+				self._emit("status", f"waiting for PowerConf — missing: {missing_text}")
+				last_missing = current_missing
 			time.sleep(3.0)
 
 	def _start_buttons(self) -> ButtonListener:
@@ -308,6 +358,33 @@ class Assistant:
 		)
 		listener.start()
 		return listener
+
+	def _resolve_output_device(self, wait_for_bluetooth: bool = False) -> int | None:
+		from powerconf.audio import bluetooth_audio_ready, find_device
+
+		deadline = time.monotonic() + (10.0 if wait_for_bluetooth else 0.0)
+		waiting_logged = False
+		while True:
+			has_sink, _ = bluetooth_audio_ready()
+			if has_sink:
+				device = find_device(self.settings.audio_output_device, "output")
+				if self.settings.audio_output_device and device is None:
+					if time.monotonic() >= deadline:
+						raise RuntimeError(
+							f"Configured audio output {self.settings.audio_output_device!r} is unavailable"
+						)
+				else:
+					return device
+			elif time.monotonic() >= deadline:
+				raise RuntimeError("PowerConf Bluetooth speaker sink is unavailable")
+			if time.monotonic() >= deadline:
+				break
+			if not waiting_logged:
+				logger.warning("Waiting briefly for the PowerConf Bluetooth output to return")
+				self._emit("status", "waiting for Bluetooth speaker")
+				waiting_logged = True
+			time.sleep(1.0)
+		raise RuntimeError("PowerConf Bluetooth speaker output did not return")
 
 	def _handle_actions(self, mic: MicStream) -> None:
 		while True:
@@ -340,7 +417,7 @@ class Assistant:
 		self._interrupted = False
 		self._speaking.set()
 		try:
-			play_samples(samples, samplerate, device=self._out_device, should_stop=self._playback_interrupted)
+			self._play_samples_recoverably(samples, samplerate, self._playback_interrupted)
 		finally:
 			self._speaking.clear()
 			mic.clear()
@@ -365,7 +442,7 @@ class Assistant:
 				"Noise floor near zero — mic may be muted or delivering silence; speech detection may false-trigger"
 			)
 
-	def _process(self, pcm: np.ndarray) -> None:
+	def _process(self, pcm: np.ndarray, wakeword_activated: bool = False) -> bool:
 		timestamp = time.strftime("%Y%m%d-%H%M%S")
 		if self.settings.save_audio:
 			self._save(f"in_{timestamp}.wav", wav_bytes(pcm, self.settings.sample_rate))
@@ -378,13 +455,28 @@ class Assistant:
 			text = self.stt.transcribe(input_wav)
 		except Exception:
 			logger.exception("Speech-to-text failed")
-			return
+			return False
 		if not text:
 			logger.info("Empty transcript — check the mic isn't muted on the device")
-			return
+			return False
+		if wakeword_activated:
+			phrase = self.settings.wakeword_phrase or Path(self.settings.wakeword_model).stem
+			phrase = phrase.replace("_", " ").replace("-", " ").strip()
+			if phrase:
+				text = re.sub(
+					r"^\s*" + re.escape(phrase) + r"[\s,.:;!?—-]*",
+					"",
+					text,
+					count=1,
+					flags=re.IGNORECASE,
+				).strip()
+			if not text:
+				logger.info("Wake phrase heard without a request — continuing to listen")
+				self._emit("status", "wake word heard — listening")
+				return True
 		logger.info("You: %s", text)
 		self._emit("you", text)
-		pipeline = _SpeechPipeline(self.tts, self._emit)
+		pipeline = _SpeechPipeline(self.tts)
 		pipeline.start()
 		if self.settings.echo_mode:
 			reply = text
@@ -397,7 +489,7 @@ class Assistant:
 				pipeline.abort()
 				logger.exception("Chat failed")
 				self._emit("error", "chat failed — see terminal log")
-				return
+				return False
 		pipeline.finish()
 		reply = _unwrap_json_reply(reply)
 		logger.info("Assistant: %s", reply)
@@ -405,15 +497,16 @@ class Assistant:
 		self._log_turn(text, reply)
 		if not reply.strip():
 			logger.warning("Empty reply from model — nothing to speak")
-			return
+			return False
 		if self._cancel_pending("interrupt"):
 			logger.info("Response cancelled")
-			return
+			return False
 		try:
 			save_prefix = f"out_{timestamp}" if self.settings.save_audio else None
 			self._play_speech(pipeline, save_prefix)
 		except Exception:
 			logger.exception("Playback failed")
+		return False
 
 	def _play_speech(self, pipeline: _SpeechPipeline, save_prefix: str | None) -> None:
 		self._mic.clear()  # drop audio queued during the STT/Ollama/TTS gap
@@ -450,7 +543,7 @@ class Assistant:
 					if save_prefix:
 						index += 1
 						self._save(f"{save_prefix}_{index}.wav", segment)
-					play_wav(segment, device=self._out_device, should_stop=self._playback_interrupted)
+					self._play_wav_recoverably(segment, self._playback_interrupted)
 		finally:
 			self._speaking.clear()
 			if watcher.is_alive():
@@ -463,6 +556,30 @@ class Assistant:
 				self._followup_until = time.monotonic() + self.settings.followup_s
 			self._emit("status", "listening")
 			self._suppress_wake_echo()
+
+	def _play_wav_recoverably(self, data: bytes, should_stop=None) -> None:
+		device = self._resolve_output_device(wait_for_bluetooth=True)
+		try:
+			play_wav(data, device=device, should_stop=should_stop)
+		except Exception:
+			logger.warning("Bluetooth playback failed mid-segment; reconnecting and retrying it", exc_info=True)
+			if should_stop is not None and should_stop():
+				return
+			time.sleep(1.0)
+			device = self._resolve_output_device(wait_for_bluetooth=True)
+			play_wav(data, device=device, should_stop=should_stop)
+
+	def _play_samples_recoverably(self, samples: np.ndarray, samplerate: int, should_stop=None) -> None:
+		device = self._resolve_output_device(wait_for_bluetooth=True)
+		try:
+			play_samples(samples, samplerate, device=device, should_stop=should_stop)
+		except Exception:
+			logger.warning("Bluetooth playback failed; reconnecting and retrying audio", exc_info=True)
+			if should_stop is not None and should_stop():
+				return
+			time.sleep(1.0)
+			device = self._resolve_output_device(wait_for_bluetooth=True)
+			play_samples(samples, samplerate, device=device, should_stop=should_stop)
 
 	def _watch_barge_in(self, mic: MicStream) -> None:
 		threshold = max(self.settings.barge_in_min_rms, self._vad.threshold * self.settings.barge_in_factor)

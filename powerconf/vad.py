@@ -23,6 +23,7 @@ class EnergyVad:
 		self._threshold_factor = threshold_factor
 		self._min_rms = min_rms
 		self._threshold = min_rms
+		self._noise_rms = 0.0
 		self._in_speech = False
 		self._speech_run = 0
 		self._silence_run = 0
@@ -32,8 +33,27 @@ class EnergyVad:
 
 	def calibrate(self, noise_pcm: np.ndarray) -> None:
 		rms = _rms(noise_pcm)
+		self._noise_rms = rms
 		self._threshold = max(rms * self._threshold_factor, self._min_rms)
 		logger.info("VAD calibrated: noise floor %.0f, threshold %.0f", rms, self._threshold)
+
+	def configure(
+		self,
+		*,
+		speech_ms: int,
+		silence_ms: int,
+		max_utterance_s: float,
+		threshold_factor: float,
+		min_rms: float,
+	) -> None:
+		"""Apply VAD tuning live while retaining any utterance currently in progress."""
+		self._speech_frames = int(self._samplerate * speech_ms / 1000)
+		self._silence_frames = int(self._samplerate * silence_ms / 1000)
+		self._max_frames = int(self._samplerate * max_utterance_s)
+		self._threshold_factor = threshold_factor
+		self._min_rms = min_rms
+		self._prebuffer_frames = int(self._samplerate * max(speech_ms, 600) / 1000)
+		self._threshold = max(self._noise_rms * self._threshold_factor, self._min_rms)
 
 	@property
 	def in_speech(self) -> bool:

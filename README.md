@@ -65,7 +65,27 @@ python main.py
 ```
 
 The assistant listens continuously; an energy VAD segments speech. The noise
-floor is measured for 1 s at startup; tune `VAD_*` vars if needed.
+floor is measured for 1 s at startup; tune `VAD_*` vars if needed. With
+`WAKEWORD_MODEL` set, a short rising tone acknowledges detection. The wake
+phrase is removed from the transcript; if you say only the wake phrase, the
+assistant keeps listening briefly for the request.
+
+Wake-word detection is optional. Install its package and model files on the Pi:
+
+```sh
+pip install openwakeword
+python -c "from openwakeword.utils import download_models; download_models()"
+python main.py wakecal
+```
+
+During calibration, keep quiet for the first few seconds, then say the wake
+phrase several times. Use the suggested `WAKEWORD_THRESHOLD` as a starting
+point and check that ordinary conversation does not trigger it.
+
+Custom openWakeWord `.onnx` and `.tflite` classifier files can also be used:
+set `WAKEWORD_MODEL` to the model file path and `WAKEWORD_PHRASE` to the
+spoken phrase (for example `Hey CJ`). Keep the shared openWakeWord feature
+models installed as described above.
 
 - **tap play** — interrupts TTS playback (barge-in).
 - **double-tap play** — plays the wav file named by `DOUBLE_TAP_WAV`
@@ -89,6 +109,13 @@ python main.py buttons
 ```
 
 then update `KEY_ACTIONS` in `powerconf/buttons.py` if a button isn't mapped.
+
+Run `python main.py audio` on the Pi to inspect PipeWire/PulseAudio routes and
+PortAudio device names. Set `AUDIO_OUTPUT_DEVICE` to a substring of the
+PowerConf output name if automatic selection or the system default chooses the
+wrong speaker. Output devices are resolved again for each playback segment so
+Bluetooth reconnects can be picked up. `BUTTON_FALLBACK=0` restricts button
+events to the named AVRCP input instead of accepting unrelated media keys.
 
 ## Notes
 
@@ -117,6 +144,14 @@ Set `WEB_UI=1` and `WEB_UI_PORT=8765` in `.env`, start the assistant, then open
 `http://<pi>:8765`. The page subscribes to `/events` (server-sent events);
 clients that connect late get the last 100 events replayed. `npm run dev`
 proxies `/events` to the Pi so you can iterate on the UI without redeploying.
+
+The **Settings** button opens live controls for the assistant prompt, wakeword
+threshold and timing, follow-up listening, barge-in, audio processing, recording,
+streaming, and VAD tuning. Saving writes only those allowlisted keys to `.env`
+and applies them without restarting, either immediately or on the next relevant
+turn. Provider, device, wakeword model, and MCP server changes still require a restart.
+Runtime logs are appended to `logs/YYYY-MM-DD.log`;
+the CLI prints only the web UI address.
 
 ## Custom tools
 

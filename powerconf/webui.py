@@ -24,10 +24,19 @@ _CONTENT_TYPES = {
 class WebUI:
 	"""Serves the built web app plus an /events SSE feed the UI subscribes to."""
 
-	def __init__(self, static_dir: Path, port: int, on_action=None) -> None:
+	def __init__(
+		self,
+		static_dir: Path,
+		port: int,
+		on_action=None,
+		settings_provider=None,
+		on_settings_update=None,
+	) -> None:
 		self._static_dir = static_dir
 		self._port = port
 		self._on_action = on_action
+		self._settings_provider = settings_provider
+		self._on_settings_update = on_settings_update
 		self._backlog: list[str] = []
 		self._listeners: list[queue.Queue] = []
 		self._lock = threading.Lock()
@@ -40,23 +49,55 @@ class WebUI:
 				path = urlparse(self.path).path
 				if path == "/events":
 					self._events()
+				elif path == "/api/settings" and ui._settings_provider is not None:
+					self._send_json(200, {"values": ui._settings_provider()})
 				else:
 					self._static(path)
 
 			def do_POST(self) -> None:
-				if urlparse(self.path).path != "/action" or ui._on_action is None:
+				path = urlparse(self.path).path
+				if path == "/api/settings" and ui._on_settings_update is not None:
+					try:
+						body = self._read_json()
+						values = ui._on_settings_update(body.get("settings"))
+					except ValueError as exc:
+						self._send_json(400, {"error": str(exc)})
+					except Exception:
+						logger.exception("Could not update runtime settings")
+						self._send_json(500, {"error": "Could not save settings; see the server log."})
+					else:
+						self._send_json(200, {"values": values})
+					return
+				if path != "/action" or ui._on_action is None:
 					self.send_error(404)
 					return
-				length = int(self.headers.get("Content-Length") or 0)
 				try:
-					body = json.loads(self.rfile.read(length) or b"{}")
+					body = self._read_json()
 					action = body["action"]
-				except (json.JSONDecodeError, KeyError):
+				except (json.JSONDecodeError, KeyError, ValueError):
 					self.send_error(400, "expected {\"action\": \"...\"}")
 					return
 				ui._on_action(action)
 				self.send_response(204)
 				self.end_headers()
+
+			def _read_json(self) -> dict:
+				length = int(self.headers.get("Content-Length") or 0)
+				if length > 32000:
+					raise ValueError("Request body is too large.")
+				body = json.loads(self.rfile.read(length) or b"{}")
+				if not isinstance(body, dict):
+					raise ValueError("Request body must be a JSON object.")
+				return body
+
+			def _send_json(self, status: int, body: dict) -> None:
+				data = json.dumps(body).encode("utf-8")
+				self.send_response(status)
+				self.send_header("Content-Type", "application/json; charset=utf-8")
+				self.send_header("Content-Length", str(len(data)))
+				self.send_header("Cache-Control", "no-store")
+				self.end_headers()
+				self.wfile.write(data)
 
 			def _events(self) -> None:
 				self.send_response(200)
