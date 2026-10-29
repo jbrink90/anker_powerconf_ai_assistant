@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from powerconf.audio import (
+from voice_assistant.audio import (
 	MicStream,
 	bluetooth_audio_ready,
 	load_audio,
@@ -20,10 +20,10 @@ from powerconf.audio import (
 	reduce_noise,
 	wav_bytes,
 )
-from powerconf.buttons import ButtonListener, find_button_device
-from powerconf.clients import OllamaClient, SpeachesClient
-from powerconf.config import Settings
-from powerconf.vad import EnergyVad
+from voice_assistant.buttons import ButtonListener, find_button_device
+from voice_assistant.clients import OllamaClient, SpeachesClient
+from voice_assistant.config import Settings
+from voice_assistant.vad import EnergyVad
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ class Assistant:
 		)
 		self.stt = self.speaches
 		if settings.stt_provider == "openai" or settings.tts_provider == "openai":
-			from powerconf.clients import OpenAIAudioClient
+			from voice_assistant.clients import OpenAIAudioClient
 
 			openai_audio = OpenAIAudioClient(
 				settings.openai_base_url,
@@ -150,7 +150,7 @@ class Assistant:
 			if settings.tts_provider == "openai":
 				self.tts = openai_audio
 		if settings.tts_provider == "fish":
-			from powerconf.clients import FishAudioClient
+			from voice_assistant.clients import FishAudioClient
 
 			self.tts = FishAudioClient(
 				settings.fish_audio_base_url,
@@ -161,7 +161,7 @@ class Assistant:
 		elif not hasattr(self, "tts"):
 			self.tts = self.speaches
 		if settings.chat_provider == "openai":
-			from powerconf.clients import OpenAIClient
+			from voice_assistant.clients import OpenAIClient
 
 			self.ollama = OpenAIClient(
 				settings.openai_base_url,
@@ -173,7 +173,7 @@ class Assistant:
 		self.messages: list[dict[str, str]] = [{"role": "system", "content": settings.system_prompt}]
 		self._log = self._load_log()
 		self._turn_tools: list[str] = []
-		from powerconf.tools import register_history_ops
+		from voice_assistant.tools import register_history_ops
 
 		register_history_ops(self._clear_history, self._forget_last)
 		self.actions: queue.Queue[str] = queue.Queue()
@@ -182,7 +182,7 @@ class Assistant:
 		self._followup_until = 0.0
 		self.ui = None
 		if settings.web_ui:
-			from powerconf.webui import WebUI
+			from voice_assistant.webui import WebUI
 
 			self.ui = WebUI(
 				Path("web/dist"),
@@ -194,12 +194,12 @@ class Assistant:
 			self.ui.start()
 
 	def run(self) -> None:
-		from powerconf.audio import find_source_name
+		from voice_assistant.audio import find_source_name
 
 		if self.settings.mcp_servers:
 			import json as _json
 
-			from powerconf.tools import init_mcp
+			from voice_assistant.tools import init_mcp
 
 			try:
 				init_mcp(_json.loads(self.settings.mcp_servers))
@@ -218,7 +218,7 @@ class Assistant:
 
 		detector = None
 		if self.settings.wakeword_model:
-			from powerconf.wakeword import WakeWordDetector
+			from voice_assistant.wakeword import WakeWordDetector
 
 			detector = WakeWordDetector(self.settings.wakeword_model, self.settings.sample_rate)
 			logger.info(
@@ -291,13 +291,13 @@ class Assistant:
 			self.ui.emit(kind, text)
 
 	def _public_settings(self) -> dict:
-		from powerconf.settings_store import public_values
+		from voice_assistant.settings_store import public_values
 
 		with self._settings_lock:
 			return public_values(self.settings)
 
 	def _update_settings(self, payload: object) -> dict:
-		from powerconf.settings_store import save_updates, validate_updates
+		from voice_assistant.settings_store import save_updates, validate_updates
 
 		updates = validate_updates(payload)
 		with self._settings_lock:
@@ -360,7 +360,7 @@ class Assistant:
 		return listener
 
 	def _resolve_output_device(self, wait_for_bluetooth: bool = False) -> int | None:
-		from powerconf.audio import bluetooth_audio_ready, find_device
+		from voice_assistant.audio import bluetooth_audio_ready, find_device
 
 		deadline = time.monotonic() + (10.0 if wait_for_bluetooth else 0.0)
 		waiting_logged = False
@@ -693,7 +693,7 @@ class Assistant:
 		return request + tail
 
 	def _chat(self, speech: _SpeechPipeline) -> str:
-		from powerconf.tools import all_tools, run_tool
+		from voice_assistant.tools import all_tools, run_tool
 
 		self._turn_tools = []
 		if len(self.messages) > STORED_MESSAGES:

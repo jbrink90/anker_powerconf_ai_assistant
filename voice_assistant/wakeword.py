@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from powerconf.audio import MicStream
+from voice_assistant.audio import MicStream
 
 logger = logging.getLogger(__name__)
 

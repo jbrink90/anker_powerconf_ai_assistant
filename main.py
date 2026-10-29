@@ -5,9 +5,9 @@ import time
 from datetime import date
 from pathlib import Path
 
-from powerconf.assistant import Assistant
-from powerconf.buttons import dump_events
-from powerconf.config import load_settings
+from voice_assistant.assistant import Assistant
+from voice_assistant.buttons import dump_events
+from voice_assistant.config import load_settings
 
 
 class _DailyLogHandler(logging.Handler):
@@ -44,7 +44,7 @@ class _DailyLogHandler(logging.Handler):
 
 class _WebAddressOnly(logging.Filter):
 	def filter(self, record: logging.LogRecord) -> bool:
-		return record.name == "powerconf.webui" and record.getMessage().startswith("Web UI on ")
+		return record.name == "voice_assistant.webui" and record.getMessage().startswith("Web UI on ")
 
 
 def _configure_logging() -> None:
@@ -70,14 +70,14 @@ def main() -> None:
 		dump_events()
 		return
 	if len(sys.argv) > 1 and sys.argv[1] == "audio":
-		from powerconf.audio import dump_audio_devices
+		from voice_assistant.audio import dump_audio_devices
 
 		dump_audio_devices()
 		return
 	settings = load_settings()
 	if len(sys.argv) > 1 and sys.argv[1] == "wakecal":
-		from powerconf.audio import MicStream, find_source_name
-		from powerconf.wakeword import WakeWordDetector, calibrate_wakeword
+		from voice_assistant.audio import MicStream, find_source_name
+		from voice_assistant.wakeword import WakeWordDetector, calibrate_wakeword
 
 		mic = MicStream(find_source_name(settings.audio_input_device), settings.sample_rate)
 		calibrate_wakeword(WakeWordDetector(settings.wakeword_model), mic)

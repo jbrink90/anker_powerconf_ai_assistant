@@ -1,6 +1,6 @@
-# Anker PowerConf Voice Assistant
+# Voice Assistant
 
-Turns an Anker PowerConf speakerphone into a voice assistant: an
+Runs a customizable voice assistant using an Anker PowerConf speakerphone: an
 always-listening VAD captures speech from the speakerphone's mic, audio goes to
 [Speaches](https://github.com/speaches-ai/speaches) for STT, the transcript to
 Ollama for a reply, and Speaches TTS audio plays back through the speaker.
@@ -82,10 +82,10 @@ During calibration, keep quiet for the first few seconds, then say the wake
 phrase several times. Use the suggested `WAKEWORD_THRESHOLD` as a starting
 point and check that ordinary conversation does not trigger it.
 
-Custom openWakeWord `.onnx` and `.tflite` classifier files can also be used:
-set `WAKEWORD_MODEL` to the model file path and `WAKEWORD_PHRASE` to the
-spoken phrase (for example `Hey CJ`). Keep the shared openWakeWord feature
-models installed as described above.
+Custom openWakeWord `.onnx` and `.tflite` classifier files can also be used.
+Put the model in the top-level `wakewords/` directory, set `WAKEWORD_MODEL`
+to its path, and set `WAKEWORD_PHRASE` to the spoken phrase. Keep the shared
+openWakeWord feature models installed as described above.
 
 - **tap play** — interrupts TTS playback (barge-in).
 - **double-tap play** — plays the wav file named by `DOUBLE_TAP_WAV`
@@ -108,7 +108,7 @@ emits:
 python main.py buttons
 ```
 
-then update `KEY_ACTIONS` in `powerconf/buttons.py` if a button isn't mapped.
+then update `KEY_ACTIONS` in `voice_assistant/buttons.py` if a button isn't mapped.
 
 Run `python main.py audio` on the Pi to inspect PipeWire/PulseAudio routes and
 PortAudio device names. Set `AUDIO_OUTPUT_DEVICE` to a substring of the
@@ -159,7 +159,7 @@ Tools are how the assistant acts on the world — the model picks one from the
 advertised schemas, the tool runs, and its result goes back to the model and
 gets spoken. Two extension paths:
 
-### Built-in tools (`powerconf/tools.py`)
+### Built-in tools (`voice_assistant/tools.py`)
 
 For anything that can run in-process. Three steps:
 

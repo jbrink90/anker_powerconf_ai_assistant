@@ -56,7 +56,7 @@ def register_history_ops(clear, forget) -> None:
 
 def init_mcp(servers: list[dict]) -> None:
 	global _mcp
-	from powerconf.mcp_bridge import McpBridge
+	from voice_assistant.mcp_bridge import McpBridge
 
 	bridge = McpBridge()
 	try:

@@ -132,7 +132,7 @@ export default function App() {
 	return (
 		<div className="app">
 			<header>
-				<h1>Jarvis</h1>
+				<h1>Voice Assistant</h1>
 				<div className="pills">
 					<button className="pill btn" onClick={() => setSettingsOpen((open) => !open)}>
 						{settingsOpen ? "Chat" : "Settings"}
