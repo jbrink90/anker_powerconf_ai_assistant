@@ -63,11 +63,13 @@ def init_mcp(servers: list[dict]) -> None:
 		bridge.start(servers)
 	except Exception:
 		logger.exception("MCP startup failed")
+		bridge.close()
 		return
 	if bridge.ollama_tools():
 		_mcp = bridge
 	else:
 		logger.warning("No MCP tools discovered — check MCP_SERVERS config")
+		bridge.close()
 
 
 def all_tools() -> list[dict]:

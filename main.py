@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import time
 from datetime import date
@@ -24,7 +25,10 @@ class _DailyLogHandler(logging.Handler):
 			if self._stream is not None:
 				self._stream.close()
 			self.directory.mkdir(parents=True, exist_ok=True)
-			self._stream = (self.directory / f"{day}.log").open("a", encoding="utf-8")
+			path = self.directory / f"{day}.log"
+			fd = os.open(path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+			os.chmod(path, 0o600)
+			self._stream = os.fdopen(fd, "a", encoding="utf-8")
 			self._day = day
 			self._stream.write(f"Log started {time.strftime('%H:%M:%S')}\n")
 			self._stream.flush()

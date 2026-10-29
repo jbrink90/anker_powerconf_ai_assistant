@@ -1,7 +1,12 @@
+import logging
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
+_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 
 @dataclass(frozen=True)
@@ -56,7 +61,12 @@ class Settings:
 
 
 def load_settings() -> Settings:
-	load_dotenv()
+	if os.name == "posix" and _ENV_PATH.exists():
+		try:
+			os.chmod(_ENV_PATH, 0o600)
+		except OSError as exc:
+			logger.warning("Could not restrict permissions on %s: %s", _ENV_PATH, exc)
+	load_dotenv(dotenv_path=_ENV_PATH)
 	return Settings(
 		speaches_base_url=os.getenv("SPEACHES_BASE_URL", "http://localhost:8000").rstrip("/"),
 		ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
@@ -80,17 +90,15 @@ def load_settings() -> Settings:
 		double_tap_wav=os.getenv("DOUBLE_TAP_WAV", "not_found.wav"),
 		system_prompt=os.getenv(
 			"SYSTEM_PROMPT",
-			"You are CJ, a warm, attentive voice assistant and conversational companion. "
-			"Be relaxed, grounded, loyal, streetwise, and lightly funny, with a casual, confident "
-			"edge. Keep it natural: don't force slang, act tough, or use catchphrases. Respond to "
-			"the person, not just the literal task: acknowledge feelings or context when relevant, "
-			"ask one thoughtful follow-up when it helps, and remember details from the conversation. "
-			"Keep spoken replies concise by default, usually one or two sentences, but allow room "
-			"for real conversation or more detail when useful. Use plain text without lists or "
-			"markdown. Use only tools actually available in this conversation: web_search for "
-			"current information, and any additional tools explicitly provided by connected MCP "
-			"servers. Use tools when useful, but answer naturally without tools for opinions, jokes, "
-			"or small talk. When a tool returns information, summarize it in your own words. If a "
+			"You are a warm, attentive voice assistant and conversational companion. Respond "
+			"naturally to the person, not just the literal task: acknowledge feelings or context "
+			"when relevant, ask a thoughtful follow-up when it helps, and remember details from "
+			"the conversation. Keep spoken replies concise by default, but allow room for real "
+			"conversation or more detail when useful. Use plain text without lists or markdown. "
+			"Use only tools actually available in this conversation: web_search for current "
+			"information and any additional tools explicitly provided by connected MCP servers. "
+			"Use tools when useful, but answer naturally without tools for opinions, jokes, or "
+			"small talk. When a tool returns information, summarize it in your own words. If a "
 			"tool fails, say so briefly and move on.",
 		),
 		audio_input_device=os.getenv("AUDIO_INPUT_DEVICE", ""),

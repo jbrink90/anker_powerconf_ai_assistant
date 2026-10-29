@@ -3,7 +3,6 @@
 import math
 import os
 import shutil
-import stat
 import tempfile
 from pathlib import Path
 
@@ -80,8 +79,7 @@ def save_updates(updates: dict) -> None:
 	try:
 		if _ENV_PATH.exists():
 			shutil.copyfile(_ENV_PATH, temp_path)
-			mode = stat.S_IMODE(_ENV_PATH.stat().st_mode)
-			os.chmod(temp_path, mode)
+		os.chmod(temp_path, 0o600)
 		for name, value in updates.items():
 			env_name, kind, _, _ = _FIELDS[name]
 			serialized = ("1" if value else "0") if kind is bool else str(value)

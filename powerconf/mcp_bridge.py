@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import threading
 from contextlib import AsyncExitStack
 from datetime import date
@@ -51,7 +52,10 @@ class McpBridge:
 		)
 		log_dir = Path(__file__).resolve().parents[1] / "logs"
 		log_dir.mkdir(parents=True, exist_ok=True)
-		errlog = (log_dir / f"{date.today().isoformat()}.log").open("a", encoding="utf-8", buffering=1)
+		log_path = log_dir / f"{date.today().isoformat()}.log"
+		log_fd = os.open(log_path, os.O_APPEND | os.O_CREAT | os.O_WRONLY, 0o600)
+		os.chmod(log_path, 0o600)
+		errlog = os.fdopen(log_fd, "a", encoding="utf-8", buffering=1)
 		try:
 			read, write = await self._stack.enter_async_context(stdio_client(params, errlog=errlog))
 		except Exception:
