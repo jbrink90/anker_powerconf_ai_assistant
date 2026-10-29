@@ -53,6 +53,7 @@ class Settings:
 	barge_in_factor: float
 	followup_s: float
 	wake_ack_tone: bool
+	utterance_ack_tone: bool
 	mcp_servers: str
 	startup_volume: str
 	web_ui: bool
@@ -122,6 +123,7 @@ def load_settings() -> Settings:
 		barge_in_factor=float(os.getenv("BARGE_IN_FACTOR", "1.0")),
 		followup_s=float(os.getenv("FOLLOWUP_S", "10")),
 		wake_ack_tone=os.getenv("WAKE_ACK_TONE", "1") in ("1", "true", "yes"),
+		utterance_ack_tone=os.getenv("UTTERANCE_ACK_TONE", "1") in ("1", "true", "yes"),
 		mcp_servers=os.getenv("MCP_SERVERS", ""),
 		startup_volume=os.getenv("STARTUP_VOLUME", ""),
 		web_ui=os.getenv("WEB_UI", "0") in ("1", "true", "yes"),

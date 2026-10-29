@@ -15,6 +15,7 @@ from voice_assistant.audio import (
 	bluetooth_audio_ready,
 	load_audio,
 	play_samples,
+	play_received_ack,
 	play_wav,
 	play_wake_ack,
 	reduce_noise,
@@ -34,6 +35,50 @@ RECENT_MESSAGES = 10   # verbatim tail sent alongside the compressed log
 HISTORY_LOG_ENTRIES = 30  # compressed entries injected as a system message
 STORED_MESSAGES = 40   # cap on self.messages in RAM — older turns live in the log
 _SENTENCE_END = re.compile(r'[.!?]+["\')\]]*\s')
+_DISMISSAL_UTTERANCES = {
+	"stop",
+	"stop now",
+	"stop please",
+	"stop talking",
+	"stop speaking",
+	"cancel",
+	"never mind",
+	"nevermind",
+	"thats enough",
+	"that is enough",
+	"okay thats enough",
+	"ok thats enough",
+	"thats all",
+	"that is all",
+	"okay thats all",
+	"ok thats all",
+	"thats it",
+	"that is it",
+	"thank you",
+	"thanks",
+	"thank you very much",
+	"thanks a lot",
+	"okay thank you",
+	"ok thank you",
+	"okay thanks",
+	"ok thanks",
+	"no thank you",
+	"no thanks",
+	"all good",
+	"im good",
+	"i am good",
+	"im all set",
+	"i am all set",
+	"were done",
+	"we are done",
+}
+
+
+def _is_dismissal_utterance(text: str) -> bool:
+	"""Recognize short, explicit end/stop phrases without swallowing longer requests."""
+	normalized = text.casefold().replace("’", "'").replace("'", "")
+	normalized = re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+	return normalized in _DISMISSAL_UTTERANCES
 
 
 class _SentenceSplitter:
@@ -275,6 +320,11 @@ class Assistant:
 					self._wakeword_pending = False
 					awake_until = 0.0
 					self._followup_until = 0.0
+					if accepted and self.settings.utterance_ack_tone:
+						try:
+							play_received_ack(device=self._resolve_output_device())
+						except Exception:
+							logger.warning("Utterance acknowledgment tone playback failed", exc_info=True)
 					if accepted and self._process(utterance, wakeword_activated):
 						# A standalone wake phrase should leave time for the actual request.
 						self._followup_until = time.monotonic() + 6.0
@@ -474,6 +524,11 @@ class Assistant:
 				logger.info("Wake phrase heard without a request — continuing to listen")
 				self._emit("status", "wake word heard — listening")
 				return True
+		if _is_dismissal_utterance(text):
+			logger.info("Dismissal phrase recognized — suppressing reply")
+			self._emit("you", text)
+			self._emit("status", "listening")
+			return False
 		logger.info("You: %s", text)
 		self._emit("you", text)
 		pipeline = _SpeechPipeline(self.tts)
@@ -554,6 +609,11 @@ class Assistant:
 				self._vad.reset()
 				# stay awake briefly for follow-ups — no wake word needed
 				self._followup_until = time.monotonic() + self.settings.followup_s
+				if self.settings.followup_s > 0 and self.settings.wake_ack_tone:
+					try:
+						play_wake_ack(device=self._resolve_output_device())
+					except Exception:
+						logger.warning("Follow-up listening tone playback failed", exc_info=True)
 			self._emit("status", "listening")
 			self._suppress_wake_echo()
 

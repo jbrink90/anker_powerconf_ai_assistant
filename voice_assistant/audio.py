@@ -194,6 +194,22 @@ def play_wake_ack(device: int | None = None) -> None:
 	play_samples(samples, samplerate, device=device)
 
 
+def play_received_ack(device: int | None = None) -> None:
+	"""Play a short descending cue when a complete utterance is ready to process."""
+	try:
+		output_info = sd.query_devices(device, "output") if device is not None else sd.query_devices(kind="output")
+		samplerate = int(output_info["default_samplerate"])
+	except Exception:
+		samplerate = 48000
+	duration = 0.16
+	t = np.arange(int(samplerate * duration), dtype=np.float32) / samplerate
+	frequencies = np.where(t < duration / 2, 880.0, 660.0)
+	envelope = np.minimum(1.0, np.minimum(t / 0.008, (duration - t) / 0.02))
+	samples_float = np.sin(2 * np.pi * frequencies * t) * envelope * 0.10
+	samples = np.clip(samples_float * 32767, -32768, 32767).astype(np.int16)
+	play_samples(samples, samplerate, device=device)
+
+
 def dump_audio_devices() -> None:
 	"""Print PipeWire/PulseAudio routes and PortAudio devices for troubleshooting."""
 	for label, args in (

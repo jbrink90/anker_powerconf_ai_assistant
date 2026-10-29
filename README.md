@@ -68,7 +68,9 @@ The assistant listens continuously; an energy VAD segments speech. The noise
 floor is measured for 1 s at startup; tune `VAD_*` vars if needed. With
 `WAKEWORD_MODEL` set, a short rising tone acknowledges detection. The wake
 phrase is removed from the transcript; if you say only the wake phrase, the
-assistant keeps listening briefly for the request.
+assistant keeps listening briefly for the request. A short descending tone
+also confirms when a complete utterance has been captured and processing starts;
+both cues can be disabled in the web settings.
 
 Wake-word detection is optional. Install its package and model files on the Pi:
 
@@ -88,6 +90,8 @@ to its path, and set `WAKEWORD_PHRASE` to the spoken phrase. Keep the shared
 openWakeWord feature models installed as described above.
 
 - **tap play** — interrupts TTS playback (barge-in).
+- Short phrases such as “stop”, “that’s enough”, “that’s all”, and “thank you”
+  stop the current reply or end the turn without prompting a spoken response.
 - **double-tap play** — plays the wav file named by `DOUBLE_TAP_WAV`
   (default `not_found.wav` in the project dir).
 - Note: the PowerConf only exposes AVRCP events for the play button

@@ -12,6 +12,7 @@ interface RuntimeSettings {
 	wakeword_cooldown_s: number;
 	followup_s: number;
 	wake_ack_tone: boolean;
+	utterance_ack_tone: boolean;
 	barge_in: boolean;
 	barge_in_min_rms: number;
 	barge_in_factor: number;
@@ -26,8 +27,8 @@ interface RuntimeSettings {
 	vad_min_rms: number;
 }
 
-type NumericSetting = Exclude<keyof RuntimeSettings, "system_prompt" | "wake_ack_tone" | "barge_in" | "noise_reduce" | "save_audio" | "streaming" | "echo_mode">;
-type BooleanSetting = "wake_ack_tone" | "barge_in" | "noise_reduce" | "save_audio" | "streaming" | "echo_mode";
+type NumericSetting = Exclude<keyof RuntimeSettings, "system_prompt" | "wake_ack_tone" | "utterance_ack_tone" | "barge_in" | "noise_reduce" | "save_audio" | "streaming" | "echo_mode">;
+type BooleanSetting = "wake_ack_tone" | "utterance_ack_tone" | "barge_in" | "noise_reduce" | "save_audio" | "streaming" | "echo_mode";
 
 const SETTING_HELP: Record<keyof RuntimeSettings, string> = {
 	system_prompt: "Sets the assistant's personality, response style, and instructions for every new reply.",
@@ -35,6 +36,7 @@ const SETTING_HELP: Record<keyof RuntimeSettings, string> = {
 	wakeword_cooldown_s: "After a wakeword is detected, ignore further wakeword detections for this many seconds.",
 	followup_s: "How long the assistant stays ready for another request after replying without requiring the wakeword again. Set to 0 to disable.",
 	wake_ack_tone: "Play a short tone when the wakeword is detected so you know the assistant is listening.",
+	utterance_ack_tone: "Play a short tone after a complete utterance is captured, to indicate that the assistant has received it and started processing.",
 	barge_in: "Let voice activity interrupt the assistant while it is speaking.",
 	barge_in_min_rms: "Minimum microphone loudness needed to interrupt speech. Lower values make interruption easier; higher values help reject noise.",
 	barge_in_factor: "Multiplier on the room-calibrated VAD threshold for interruption. Higher values make interruption less sensitive.",
@@ -173,6 +175,7 @@ export default function App() {
 							</div>
 							<div className="settings-toggles">
 								<label data-tooltip={SETTING_HELP.wake_ack_tone}><input aria-description={SETTING_HELP.wake_ack_tone} type="checkbox" checked={settings.wake_ack_tone} onChange={(event) => changeBoolean("wake_ack_tone", event.target.checked)} /> Wake acknowledgment tone</label>
+								<label data-tooltip={SETTING_HELP.utterance_ack_tone}><input aria-description={SETTING_HELP.utterance_ack_tone} type="checkbox" checked={settings.utterance_ack_tone} onChange={(event) => changeBoolean("utterance_ack_tone", event.target.checked)} /> Utterance received tone</label>
 								<label data-tooltip={SETTING_HELP.barge_in}><input aria-description={SETTING_HELP.barge_in} type="checkbox" checked={settings.barge_in} onChange={(event) => changeBoolean("barge_in", event.target.checked)} /> Allow interruption while speaking</label>
 								<label data-tooltip={SETTING_HELP.noise_reduce}><input aria-description={SETTING_HELP.noise_reduce} type="checkbox" checked={settings.noise_reduce} onChange={(event) => changeBoolean("noise_reduce", event.target.checked)} /> Noise reduction</label>
 								<label data-tooltip={SETTING_HELP.save_audio}><input aria-description={SETTING_HELP.save_audio} type="checkbox" checked={settings.save_audio} onChange={(event) => changeBoolean("save_audio", event.target.checked)} /> Save recordings</label>

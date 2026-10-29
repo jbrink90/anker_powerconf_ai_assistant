@@ -13,6 +13,7 @@ _FIELDS = {
 	"wakeword_cooldown_s": ("WAKEWORD_COOLDOWN_S", float, 0.0, 60.0),
 	"followup_s": ("FOLLOWUP_S", float, 0.0, 120.0),
 	"wake_ack_tone": ("WAKE_ACK_TONE", bool, None, None),
+	"utterance_ack_tone": ("UTTERANCE_ACK_TONE", bool, None, None),
 	"barge_in": ("BARGE_IN", bool, None, None),
 	"barge_in_min_rms": ("BARGE_IN_MIN_RMS", float, 0.0, 10000.0),
 	"barge_in_factor": ("BARGE_IN_FACTOR", float, 0.1, 10.0),
