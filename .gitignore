@@ -8,5 +8,3 @@ logs/
 history.md
 web/node_modules/
 web/dist/
-wakewords/*.onnx
-wakewords/*.tflite
