@@ -31,6 +31,22 @@ Add your user to the `input` group so `evdev` can read `/dev/input/*`:
 sudo usermod -aG input $USER   # log out/in afterwards
 ```
 
+## Install as a service
+
+On Linux, run `bash install.sh` and choose an installation directory. The
+recommended location is `/opt/voice_assistant`; the installer also offers the
+usual `/usr/local/bin`, `/usr/local/sbin`, `/usr/bin`, and `/usr/sbin` paths.
+Install the system packages listed in the Pi setup section first.
+It creates a virtual environment, installs the Python requirements, and keeps
+an existing `.env` during updates. If no `.env` exists, it copies one from the
+project or starts from `.env.example`.
+
+The installer can also enable a per-user systemd service at boot. It runs as
+your account and enables systemd lingering so it can start without an active
+login session. Run `bash uninstall.sh` to find and remove marked installations
+and the service; the script backs up `.env`, history, logs, recordings, and
+custom wakeword files under `~/.local/share/voice-assistant/` first.
+
 ## Pairing the PowerConf
 
 ```sh
